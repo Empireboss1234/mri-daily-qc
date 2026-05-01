@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MRI Daily QC Logbook | MedPhys QA</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -47,8 +47,8 @@
             '1.5T': {
                 name: 'Philips Ingenia Ambition S 1.5 T.',
                 baseFreq: 63860000,
-                cfMin: 63570000,
-                cfMax: 64180000,
+                deltaFreqMin: -100, // Tolerance for Delta Freq (Hz)
+                deltaFreqMax: 100,  // Tolerance for Delta Freq (Hz)
                 isZeroBoilOff: true,
                 roomTempMax: 24.0,
                 roomHumidMax: 70.0,
@@ -70,8 +70,8 @@
             '3.0T': {
                 name: 'Philips Achieva dStream 3.0 T.',
                 baseFreq: 127720000,
-                cfMin: 127370000,
-                cfMax: 128090000,
+                deltaFreqMin: -100, // Tolerance for Delta Freq (Hz)
+                deltaFreqMax: 100,  // Tolerance for Delta Freq (Hz)
                 heMin: 50.0,
                 waterTempMax: 12.0,
                 roomTempMax: 24.0,
@@ -119,7 +119,8 @@
         const getEmptyFormData = () => ({
             date: new Date().toISOString().split('T')[0],
             performedBy: '',
-            cf: '',
+            deltaFreq: '', // New Field: Delta Freq (Primary)
+            cf: '',        // Absolute CF (Optional)
             tg: '',
             waterTemp: '',
             waterFlow: '',
@@ -140,68 +141,41 @@
         });
 
         const buildToleranceRules = (profile) => ({
-            cf: { label: 'Center Frequency', min: profile.cfMin, max: profile.cfMax, unit: 'Hz' },
-
+            deltaFreq: (profile.deltaFreqMin !== undefined || profile.deltaFreqMax !== undefined) 
+                ? { label: 'Delta Frequency', min: profile.deltaFreqMin, max: profile.deltaFreqMax, unit: 'Hz' } 
+                : null,
+            // absolute CF removed from strict rules to prevent false warnings, rely on deltaFreq instead
+            
             heliumLevel: (!profile.isZeroBoilOff && profile.heMin !== undefined)
-                ? { label: 'Helium Level', min: profile.heMin, unit: '%' }
-                : null,
-
+                ? { label: 'Helium Level', min: profile.heMin, unit: '%' } : null,
             chillerTemp: (profile.chillerTempMin !== undefined || profile.chillerTempMax !== undefined)
-                ? { label: 'Chiller Temp', min: profile.chillerTempMin, max: profile.chillerTempMax, unit: '°C' }
-                : null,
-
+                ? { label: 'Chiller Temp', min: profile.chillerTempMin, max: profile.chillerTempMax, unit: '°C' } : null,
             waterTemp: (profile.waterTempMax !== undefined)
-                ? { label: 'Pri. Water Temp', max: profile.waterTempMax, unit: '°C' }
-                : null,
-
+                ? { label: 'Pri. Water Temp', max: profile.waterTempMax, unit: '°C' } : null,
             waterFlow: (profile.waterFlowMin !== undefined)
-                ? { label: 'Pri. Water Flow', min: profile.waterFlowMin, unit: 'L/H' }
-                : null,
-
+                ? { label: 'Pri. Water Flow', min: profile.waterFlowMin, unit: 'L/H' } : null,
             roomTemp: (profile.roomTempMax !== undefined)
-                ? { label: 'Room Temp', max: profile.roomTempMax, unit: '°C' }
-                : null,
-
+                ? { label: 'Room Temp', max: profile.roomTempMax, unit: '°C' } : null,
             roomHumidity: (profile.roomHumidMax !== undefined)
-                ? { label: 'Room Humidity', max: profile.roomHumidMax, unit: '%' }
-                : null,
-
+                ? { label: 'Room Humidity', max: profile.roomHumidMax, unit: '%' } : null,
             gcOutT: (profile.gcOutTMax !== undefined)
-                ? { label: 'GC Out T', max: profile.gcOutTMax, unit: '°C' }
-                : null,
-
+                ? { label: 'GC Out T', max: profile.gcOutTMax, unit: '°C' } : null,
             gaOutT: (profile.gaOutTMax !== undefined)
-                ? { label: 'GA Out T', max: profile.gaOutTMax, unit: '°C' }
-                : null,
-
+                ? { label: 'GA Out T', max: profile.gaOutTMax, unit: '°C' } : null,
             gcInP: (profile.gcInPMin !== undefined || profile.gcInPMax !== undefined)
-                ? { label: 'GC In P', min: profile.gcInPMin, max: profile.gcInPMax, unit: 'bar' }
-                : null,
-
+                ? { label: 'GC In P', min: profile.gcInPMin, max: profile.gcInPMax, unit: 'bar' } : null,
             gaInP: (profile.gaInPMin !== undefined || profile.gaInPMax !== undefined)
-                ? { label: 'GA In P', min: profile.gaInPMin, max: profile.gaInPMax, unit: 'bar' }
-                : null,
-
+                ? { label: 'GA In P', min: profile.gaInPMin, max: profile.gaInPMax, unit: 'bar' } : null,
             gc3WayV: (profile.gc3WayVMin !== undefined || profile.gc3WayVMax !== undefined)
-                ? { label: 'GC 3-Way V.', min: profile.gc3WayVMin, max: profile.gc3WayVMax, unit: 'v.' }
-                : null,
-
+                ? { label: 'GC 3-Way V.', min: profile.gc3WayVMin, max: profile.gc3WayVMax, unit: 'v.' } : null,
             ga3WayV: (profile.ga3WayVMin !== undefined || profile.ga3WayVMax !== undefined)
-                ? { label: 'GA 3-Way V.', min: profile.ga3WayVMin, max: profile.ga3WayVMax, unit: 'v.' }
-                : null
+                ? { label: 'GA 3-Way V.', min: profile.ga3WayVMin, max: profile.ga3WayVMax, unit: 'v.' } : null
         });
 
         const getViolationMessage = (num, rule) => {
             if (!rule) return '';
-
-            if (rule.min !== undefined && num < rule.min) {
-                return 'น้อยกว่า tolerance';
-            }
-
-            if (rule.max !== undefined && num > rule.max) {
-                return rule.min !== undefined ? 'มากกว่า tolerance' : 'เกิน tolerance';
-            }
-
+            if (rule.min !== undefined && num < rule.min) return 'น้อยกว่า tolerance';
+            if (rule.max !== undefined && num > rule.max) return rule.min !== undefined ? 'มากกว่า tolerance' : 'เกิน tolerance';
             return '';
         };
 
@@ -209,40 +183,21 @@
             if (!rule || value === '' || value === null || value === undefined) {
                 return { isOut: false, numericValue: null, message: '' };
             }
-
             const numericValue = parseFloat(value);
-            if (Number.isNaN(numericValue)) {
-                return { isOut: false, numericValue: null, message: '' };
-            }
-
+            if (Number.isNaN(numericValue)) return { isOut: false, numericValue: null, message: '' };
             const message = getViolationMessage(numericValue, rule);
-
-            return {
-                isOut: !!message,
-                numericValue,
-                message
-            };
+            return { isOut: !!message, numericValue, message };
         };
 
         const evaluateRecordStatus = (record, profile) => {
             const rules = buildToleranceRules(profile);
-
             const violations = Object.entries(rules)
                 .filter(([, rule]) => !!rule)
                 .map(([field, rule]) => {
                     const result = evaluateFieldAgainstRule(record[field], rule);
-
                     if (!result.isOut) return null;
-
-                    return {
-                        field,
-                        label: rule.label,
-                        value: result.numericValue,
-                        unit: rule.unit || '',
-                        message: result.message
-                    };
-                })
-                .filter(Boolean);
+                    return { field, label: rule.label, value: result.numericValue, unit: rule.unit || '', message: result.message };
+                }).filter(Boolean);
 
             return {
                 status: violations.length > 0 ? 'NOT PASS' : 'PASS',
@@ -255,26 +210,20 @@
             afterDatasetsDraw(chart, args, pluginOptions) {
                 const labels = pluginOptions?.labels || [];
                 if (!labels.length) return;
-
                 const meta = chart.getDatasetMeta(0);
                 const { ctx } = chart;
-
                 ctx.save();
                 ctx.font = '10px sans-serif';
                 ctx.fillStyle = '#dc2626';
                 ctx.textAlign = 'center';
-
                 labels.forEach(item => {
                     const point = meta.data[item.index];
                     if (!point) return;
-
                     ctx.fillText(item.text, point.x, point.y - 10);
                 });
-
                 ctx.restore();
             }
         };
-
         Chart.register(violationTextPlugin);
 
         // --- Components ---
@@ -291,143 +240,71 @@
 
             useEffect(() => {
                 if (!canvasRef.current) return;
-
                 const ctx = canvasRef.current.getContext('2d');
-
-                if (chartInstanceRef.current) {
-                    chartInstanceRef.current.destroy();
-                }
+                if (chartInstanceRef.current) chartInstanceRef.current.destroy();
 
                 const validData = data.filter(d => {
                     if (d.value === '' || d.value === null || d.value === undefined) return false;
                     return !Number.isNaN(parseFloat(d.value));
                 });
 
-                const dates = validData.map(d =>
-                    new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                );
+                const dates = validData.map(d => new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
                 const values = validData.map(d => parseFloat(d.value));
 
-                const violationLabels = validData
-                    .map((d, index) => {
-                        const result = evaluateFieldAgainstRule(d.value, {
-                            min: lowerLimit,
-                            max: upperLimit
-                        });
+                const violationLabels = validData.map((d, index) => {
+                    const result = evaluateFieldAgainstRule(d.value, { min: lowerLimit, max: upperLimit });
+                    return result.isOut ? { index, text: result.message, value: result.numericValue } : null;
+                }).filter(Boolean);
 
-                        return result.isOut
-                            ? { index, text: result.message, value: result.numericValue }
-                            : null;
-                    })
-                    .filter(Boolean);
+                const violationMap = Object.fromEntries(violationLabels.map(v => [v.index, v]));
+                const pointBackgroundColor = values.map((_, idx) => violationMap[idx] ? '#dc2626' : color);
+                const pointBorderColor = values.map((_, idx) => violationMap[idx] ? '#dc2626' : color);
+                const pointRadius = values.map((_, idx) => violationMap[idx] ? 5 : 3);
+                const pointHoverRadius = values.map((_, idx) => violationMap[idx] ? 7 : 6);
 
-                const violationMap = Object.fromEntries(
-                    violationLabels.map(v => [v.index, v])
-                );
-
-                const pointBackgroundColor = values.map((_, idx) =>
-                    violationMap[idx] ? '#dc2626' : color
-                );
-
-                const pointBorderColor = values.map((_, idx) =>
-                    violationMap[idx] ? '#dc2626' : color
-                );
-
-                const pointRadius = values.map((_, idx) =>
-                    violationMap[idx] ? 5 : 3
-                );
-
-                const pointHoverRadius = values.map((_, idx) =>
-                    violationMap[idx] ? 7 : 6
-                );
-
-                const datasets = [
-                    {
-                        label: label,
-                        data: values,
-                        borderColor: color,
-                        backgroundColor: color + '20',
-                        tension: 0.2,
-                        borderJoinStyle: 'round',
-                        pointBackgroundColor,
-                        pointBorderColor,
-                        pointRadius,
-                        pointHoverRadius
-                    }
-                ];
+                const datasets = [{
+                    label: label,
+                    data: values,
+                    borderColor: color,
+                    backgroundColor: color + '20',
+                    tension: 0.2,
+                    borderJoinStyle: 'round',
+                    pointBackgroundColor,
+                    pointBorderColor,
+                    pointRadius,
+                    pointHoverRadius
+                }];
 
                 if (showLimits && values.length > 0) {
                     if (upperLimit !== undefined) {
-                        datasets.push({
-                            label: 'Upper Limit',
-                            data: values.map(() => upperLimit),
-                            borderColor: '#ef4444',
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            borderWidth: 1.5,
-                            fill: false
-                        });
+                        datasets.push({ label: 'Upper Limit', data: values.map(() => upperLimit), borderColor: '#ef4444', borderDash: [5, 5], pointRadius: 0, borderWidth: 1.5, fill: false });
                     }
-
                     if (lowerLimit !== undefined) {
-                        datasets.push({
-                            label: 'Lower Limit',
-                            data: values.map(() => lowerLimit),
-                            borderColor: '#ef4444',
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            borderWidth: 1.5,
-                            fill: false
-                        });
+                        datasets.push({ label: 'Lower Limit', data: values.map(() => lowerLimit), borderColor: '#ef4444', borderDash: [5, 5], pointRadius: 0, borderWidth: 1.5, fill: false });
                     }
                 }
 
                 chartInstanceRef.current = new Chart(ctx, {
                     type: 'line',
-                    data: {
-                        labels: dates,
-                        datasets: datasets
-                    },
+                    data: { labels: dates, datasets: datasets },
                     options: {
                         animation: false,
                         responsive: true,
                         maintainAspectRatio: false,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
+                        interaction: { mode: 'index', intersect: false },
                         scales: {
-                            y: {
-                                display: true,
-                                title: { display: false }
-                            },
-                            x: {
-                                ticks: { maxRotation: 45, minRotation: 0 }
-                            }
+                            y: { display: true, title: { display: false } },
+                            x: { ticks: { maxRotation: 45, minRotation: 0 } }
                         },
                         plugins: {
-                            legend: {
-                                position: 'top',
-                                labels: { boxWidth: 12, usePointStyle: true, font: { size: 11 } }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    afterLabel: function(context) {
-                                        const v = violationMap[context.dataIndex];
-                                        return v ? `⚠️ ${v.text}` : '';
-                                    }
-                                }
-                            },
-                            violationTextPlugin: {
-                                labels: violationLabels
-                            }
+                            legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true, font: { size: 11 } } },
+                            tooltip: { callbacks: { afterLabel: function(context) { const v = violationMap[context.dataIndex]; return v ? `⚠️ ${v.text}` : ''; } } },
+                            violationTextPlugin: { labels: violationLabels }
                         }
                     }
                 });
 
-                return () => {
-                    if (chartInstanceRef.current) chartInstanceRef.current.destroy();
-                };
+                return () => { if (chartInstanceRef.current) chartInstanceRef.current.destroy(); };
             }, [data, label, color, upperLimit, lowerLimit, showLimits]);
 
             return <canvas ref={canvasRef}></canvas>;
@@ -435,36 +312,29 @@
 
         // --- Main Application ---
         const App = () => {
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyoGxujMTlS0mTyy7yMqBG5HWevviRicJqo5Mny3b7MDOuxDj5Vzx9VQ4eAdFENCHvt/exec';
+            const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE'; // Replace with actual URL
 
             const [activeTab, setActiveTab] = useState('new');
             const [selectedMachine, setSelectedMachine] = useState('3.0T');
             const [records, setRecords] = useState([]);
             const [editingId, setEditingId] = useState(null);
-
             const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
             const [filterMonth, setFilterMonth] = useState('all');
-
             const [formData, setFormData] = useState(getEmptyFormData());
 
             useEffect(() => {
                 const savedRecords = localStorage.getItem('mri_qa_records');
                 const localData = savedRecords ? JSON.parse(savedRecords) : [];
+                if (localData.length > 0) setRecords(localData);
 
-                if (localData.length > 0) {
-                    setRecords(localData);
-                }
-
+                // Mock Fetch for Offline testing / Replace with real fetch
                 fetch(SCRIPT_URL)
                     .then(res => res.json())
                     .then(cloudData => {
                         if (Array.isArray(cloudData)) {
                             const cloudIds = new Set(cloudData.map(r => r.id));
                             const uniqueLocalData = localData.filter(r => !cloudIds.has(r.id));
-                            const combinedData = [...cloudData, ...uniqueLocalData];
-
-                            combinedData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
+                            const combinedData = [...cloudData, ...uniqueLocalData].sort((a, b) => new Date(b.date) - new Date(a.date));
                             setRecords(combinedData);
                             localStorage.setItem('mri_qa_records', JSON.stringify(combinedData));
                         }
@@ -476,21 +346,13 @@
                     });
             }, []);
 
-            useEffect(() => {
-                localStorage.setItem('mri_qa_records', JSON.stringify(records));
-            }, [records]);
-
-            useEffect(() => {
-                setTimeout(() => lucide.createIcons(), 50);
-            }, [activeTab, selectedMachine, filterYear, filterMonth, records]);
+            useEffect(() => { localStorage.setItem('mri_qa_records', JSON.stringify(records)); }, [records]);
+            useEffect(() => { setTimeout(() => lucide.createIcons(), 50); }, [activeTab, selectedMachine, filterYear, filterMonth, records]);
 
             const handleInputChange = (e) => {
                 const { name, value, type, checked } = e.target;
                 if (type === 'checkbox') {
-                    setFormData(prev => ({
-                        ...prev,
-                        checklist: { ...prev.checklist, [name]: checked }
-                    }));
+                    setFormData(prev => ({ ...prev, checklist: { ...prev.checklist, [name]: checked } }));
                 } else {
                     setFormData(prev => ({ ...prev, [name]: value }));
                 }
@@ -498,7 +360,6 @@
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-
                 const profile = MACHINE_PROFILES[selectedMachine];
                 const { status, violations } = evaluateRecordStatus(formData, profile);
 
@@ -510,10 +371,7 @@
                     violations
                 };
 
-                const finalRecord = {
-                    ...recordData,
-                    id: editingId ? editingId : generateId()
-                };
+                const finalRecord = { ...recordData, id: editingId ? editingId : generateId() };
 
                 if (editingId) {
                     setRecords(prev => prev.map(r => r.id === editingId ? finalRecord : r));
@@ -522,18 +380,14 @@
                     setRecords(prev => [finalRecord, ...prev]);
                 }
 
+                // Push to Cloud (Silently fail if offline)
                 fetch(SCRIPT_URL, {
                     method: 'POST',
                     body: JSON.stringify(finalRecord),
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-                }).catch(error => console.error('Error saving to Google Sheets:', error));
+                }).catch(error => console.error('Error saving to Cloud:', error));
 
-                alert(
-                    editingId
-                        ? `QC Record Updated Successfully (${status})`
-                        : `QC Record Saved to Cloud! (${status})`
-                );
-
+                alert(editingId ? `QC Record Updated Successfully (${status})` : `QC Record Saved! (${status})`);
                 setActiveTab('dashboard');
                 resetForm();
             };
@@ -549,14 +403,15 @@
                 setFormData({
                     date: record.date,
                     performedBy: record.performedBy,
-                    cf: record.cf,
-                    tg: record.tg,
-                    waterTemp: record.waterTemp,
-                    waterFlow: record.waterFlow,
+                    deltaFreq: record.deltaFreq || '',
+                    cf: record.cf || '',
+                    tg: record.tg || '',
+                    waterTemp: record.waterTemp || '',
+                    waterFlow: record.waterFlow || '',
                     chillerTemp: record.chillerTemp || '',
-                    roomTemp: record.roomTemp,
-                    roomHumidity: record.roomHumidity,
-                    heliumLevel: record.heliumLevel,
+                    roomTemp: record.roomTemp || '',
+                    roomHumidity: record.roomHumidity || '',
+                    heliumLevel: record.heliumLevel || '',
                     gcOutT: record.gcOutT || '',
                     gaOutT: record.gaOutT || '',
                     gcInP: record.gcInP || '',
@@ -574,35 +429,18 @@
 
             const handleExportCSV = () => {
                 const headers = [
-                    'Date', 'Machine', 'User', 'Status', 'Violations', 'Center Freq', 'Transmitter Gain', 'Helium Level',
+                    'Date', 'Machine', 'User', 'Status', 'Violations', 'Delta Freq (Hz)', 'Absolute CF', 'Transmitter Gain', 'Helium Level',
                     'Chiller Temp', 'Water Temp', 'Water Flow', 'Room Temp', 'Room Humidity', 'GC Out T', 'GA Out T',
                     'GC In P', 'GA In P', 'HE RE T', 'GC 3-Way V', 'GA 3-Way V', 'Analysis', 'Conclusion'
                 ];
 
                 const exportData = filteredRecords;
                 const rows = exportData.map(r => [
-                    r.date,
-                    r.machine,
-                    r.performedBy,
-                    r.status,
+                    r.date, r.machine, r.performedBy, r.status,
                     `"${(r.violations || []).map(v => `${v.label}: ${v.message}`).join(' | ')}"`,
-                    r.cf,
-                    r.tg,
-                    r.heliumLevel,
-                    r.chillerTemp,
-                    r.waterTemp,
-                    r.waterFlow,
-                    r.roomTemp,
-                    r.roomHumidity,
-                    r.gcOutT,
-                    r.gaOutT,
-                    r.gcInP,
-                    r.gaInP,
-                    r.heReT,
-                    r.gc3WayV,
-                    r.ga3WayV,
-                    `"${r.analysisComment || ''}"`,
-                    `"${r.testConclusion || ''}"`
+                    r.deltaFreq, r.cf, r.tg, r.heliumLevel, r.chillerTemp, r.waterTemp, r.waterFlow, r.roomTemp, r.roomHumidity,
+                    r.gcOutT, r.gaOutT, r.gcInP, r.gaInP, r.heReT, r.gc3WayV, r.ga3WayV,
+                    `"${r.analysisComment || ''}"`, `"${r.testConclusion || ''}"`
                 ]);
 
                 const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
@@ -615,9 +453,8 @@
             };
 
             const handleDelete = (id) => {
-                if (window.confirm('Are you sure you want to delete this record? It will be removed from Cloud too.')) {
+                if (window.confirm('Are you sure you want to delete this record?')) {
                     setRecords(prev => prev.filter(r => r.id !== id));
-
                     fetch(SCRIPT_URL, {
                         method: 'POST',
                         body: JSON.stringify({ action: 'delete', id: id }),
@@ -631,14 +468,9 @@
 
             const evaluatedRecords = useMemo(() => {
                 return records.map(r => {
-                    const profile = MACHINE_PROFILES[r.machine];
+                    const profile = MACHINE_PROFILES[r.machine] || MACHINE_PROFILES['3.0T'];
                     const { status, violations } = evaluateRecordStatus(r, profile);
-
-                    return {
-                        ...r,
-                        status,
-                        violations
-                    };
+                    return { ...r, status, violations };
                 });
             }, [records]);
 
@@ -652,17 +484,8 @@
                 return evaluatedRecords
                     .filter(r => {
                         if (r.machine !== selectedMachine) return false;
-
-                        if (filterYear !== 'all') {
-                            const rYear = new Date(r.date).getFullYear().toString();
-                            if (rYear !== filterYear) return false;
-                        }
-
-                        if (filterMonth !== 'all') {
-                            const rMonth = new Date(r.date).getMonth().toString();
-                            if (rMonth !== filterMonth) return false;
-                        }
-
+                        if (filterYear !== 'all' && new Date(r.date).getFullYear().toString() !== filterYear) return false;
+                        if (filterMonth !== 'all' && new Date(r.date).getMonth().toString() !== filterMonth) return false;
                         return true;
                     })
                     .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -677,13 +500,11 @@
 
             const inputClass = (fieldName, extra = '') =>
                 `w-full p-2 border rounded-md outline-none ${
-                    isFieldWarning(fieldName)
-                        ? 'border-red-500 ring-1 ring-red-500'
-                        : 'border-slate-300 focus:ring-2 focus:ring-blue-500'
+                    isFieldWarning(fieldName) ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-300 focus:ring-2 focus:ring-blue-500'
                 } ${extra}`;
 
-            // Chart Data Prep
-            const cfData = filteredRecords.map(r => ({ date: r.date, value: r.cf }));
+            // Chart Data Prep (All 15 Data points)
+            const deltaFreqData = filteredRecords.map(r => ({ date: r.date, value: r.deltaFreq }));
             const tgData = filteredRecords.map(r => ({ date: r.date, value: r.tg }));
             const heliumData = filteredRecords.map(r => ({ date: r.date, value: r.heliumLevel }));
             const chillerTempData = filteredRecords.map(r => ({ date: r.date, value: r.chillerTemp }));
@@ -698,6 +519,7 @@
             const heReTData = filteredRecords.map(r => ({ date: r.date, value: r.heReT }));
             const gc3WayVData = filteredRecords.map(r => ({ date: r.date, value: r.gc3WayV }));
             const ga3WayVData = filteredRecords.map(r => ({ date: r.date, value: r.ga3WayV }));
+            
             const statusCounts = {
                 pass: filteredRecords.filter(r => r.status === 'PASS').length,
                 notPass: filteredRecords.filter(r => r.status === 'NOT PASS').length
@@ -707,68 +529,39 @@
                 <div className="min-h-screen pb-12">
                     {/* Header */}
                     <header className="bg-slate-900 text-white shadow-lg no-print">
-                        <div className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                        <div className="max-w-[95%] mx-auto px-4 py-4 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                                <div className="bg-blue-500 p-2 rounded-lg">
-                                    <i data-lucide="activity" className="text-white w-6 h-6"></i>
-                                </div>
-                                <div>
-                                    <h1 className="text-xl font-bold tracking-tight">MRI QA Manager</h1>
-                                    <p className="text-xs text-slate-400">Daily Quality Control Logbook</p>
-                                </div>
+                                <div className="bg-blue-500 p-2 rounded-lg"><i data-lucide="activity" className="text-white w-6 h-6"></i></div>
+                                <div><h1 className="text-xl font-bold tracking-tight">MRI QA Manager</h1><p className="text-xs text-slate-400">Daily Quality Control Logbook</p></div>
                             </div>
                             <div className="flex items-center gap-4">
-                                <select
-                                    value={selectedMachine}
-                                    onChange={(e) => setSelectedMachine(e.target.value)}
-                                    className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none"
-                                >
-                                    {Object.keys(MACHINE_PROFILES).map(key => (
-                                        <option key={key} value={key}>{MACHINE_PROFILES[key].name}</option>
-                                    ))}
+                                <select value={selectedMachine} onChange={(e) => setSelectedMachine(e.target.value)} className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
+                                    {Object.keys(MACHINE_PROFILES).map(key => (<option key={key} value={key}>{MACHINE_PROFILES[key].name}</option>))}
                                 </select>
                             </div>
                         </div>
                     </header>
 
                     {/* Navigation */}
-                    <nav className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 py-6 no-print">
+                    <nav className="max-w-[95%] mx-auto px-4 py-6 no-print">
                         <div className="flex space-x-4 border-b border-slate-200">
-                            {[
-                                { id: 'new', label: 'New Entry', icon: 'plus-circle' },
-                                { id: 'dashboard', label: 'Dashboard & Analysis', icon: 'bar-chart-2' },
-                                { id: 'history', label: 'History Log', icon: 'list' }
-                            ].map(tab => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-2 pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                                        activeTab === tab.id
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                    }`}
-                                >
-                                    <i data-lucide={tab.icon} className="w-4 h-4"></i>
-                                    {tab.label}
+                            {[{ id: 'new', label: 'New Entry', icon: 'plus-circle' }, { id: 'dashboard', label: 'Dashboard & Analysis', icon: 'bar-chart-2' }, { id: 'history', label: 'History Log', icon: 'list' }].map(tab => (
+                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>
+                                    <i data-lucide={tab.icon} className="w-4 h-4"></i> {tab.label}
                                 </button>
                             ))}
                         </div>
                     </nav>
 
                     {/* Content Area */}
-                    <main className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8">
+                    <main className="max-w-[95%] mx-auto px-4">
+                        
                         {/* VIEW: NEW ENTRY */}
                         {activeTab === 'new' && (
                             <div className="max-w-4xl mx-auto">
                                 <div className="mb-4 flex items-center justify-between">
-                                    <h2 className="text-xl font-bold text-slate-800">
-                                        {editingId ? 'Edit Entry' : 'New QC Entry'}
-                                    </h2>
-                                    {editingId && (
-                                        <button onClick={resetForm} className="text-sm text-red-600 hover:text-red-800 underline">
-                                            Cancel Editing
-                                        </button>
-                                    )}
+                                    <h2 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Entry' : 'New QC Entry'}</h2>
+                                    {editingId && <button onClick={resetForm} className="text-sm text-red-600 hover:text-red-800 underline">Cancel Editing</button>}
                                 </div>
 
                                 <form onSubmit={handleSubmit}>
@@ -777,26 +570,11 @@
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div>
                                                 <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                                                <input
-                                                    type="date"
-                                                    name="date"
-                                                    required
-                                                    value={formData.date}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                                                />
+                                                <input type="date" name="date" required value={formData.date} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">Performed By (Physicist/Tech)</label>
-                                                <input
-                                                    type="text"
-                                                    name="performedBy"
-                                                    required
-                                                    placeholder="e.g. John Doe"
-                                                    value={formData.performedBy}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                                                />
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Performed By</label>
+                                                <input type="text" name="performedBy" required placeholder="e.g. John Doe" value={formData.performedBy} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" />
                                             </div>
                                         </div>
                                     </Card>
@@ -806,77 +584,46 @@
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                                             {CHECKLIST_ITEMS.map(item => (
                                                 <div key={item.id} className="flex items-center gap-3 p-3 border border-slate-100 rounded-lg hover:bg-blue-50 transition-colors">
-                                                    <input
-                                                        type="checkbox"
-                                                        id={item.id}
-                                                        name={item.id}
-                                                        checked={formData.checklist[item.id] || false}
-                                                        onChange={handleInputChange}
-                                                        className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 cursor-pointer"
-                                                    />
-                                                    <label htmlFor={item.id} className="text-sm font-medium text-slate-700 cursor-pointer">
-                                                        {item.label}
-                                                    </label>
+                                                    <input type="checkbox" id={item.id} name={item.id} checked={formData.checklist[item.id] || false} onChange={handleInputChange} className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 cursor-pointer" />
+                                                    <label htmlFor={item.id} className="text-sm font-medium text-slate-700 cursor-pointer">{item.label}</label>
                                                 </div>
                                             ))}
                                         </div>
-
                                         {!currentProfile.isZeroBoilOff && (
                                             <div className="mb-4">
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">Display Helium Level (%)</label>
-                                                <input
-                                                    type="number"
-                                                    name="heliumLevel"
-                                                    step="0.1"
-                                                    value={formData.heliumLevel}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('heliumLevel', 'md:w-1/3')}
-                                                />
-                                                {isFieldWarning('heliumLevel') && (
-                                                    <p className="text-red-600 text-xs mt-1">⚠️ {getWarningText('heliumLevel')}</p>
-                                                )}
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Helium Level (%)</label>
+                                                <input type="number" name="heliumLevel" step="0.1" value={formData.heliumLevel} onChange={handleInputChange} className={inputClass('heliumLevel', 'md:w-1/3')} />
+                                                {isFieldWarning('heliumLevel') && <p className="text-red-600 text-xs mt-1">⚠️ {getWarningText('heliumLevel')}</p>}
                                             </div>
                                         )}
                                     </Card>
 
-                                    {/* Section 3 */}
-                                    <Card title="Magnet & System Parameters" className="mb-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Section 3: Magnet Parameters (UPDATED) */}
+                                    <Card title="Magnet & System Parameters" className="mb-6 bg-blue-50">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-blue-800 mb-1">
+                                                    Delta Frequency (Hz) <span className="text-red-500">*</span>
+                                                    <span className="text-xs text-blue-500 block font-normal">Range: {currentProfile.deltaFreqMin} to {currentProfile.deltaFreqMax} Hz</span>
+                                                </label>
+                                                <input type="number" name="deltaFreq" required step="1" placeholder="e.g. 32" value={formData.deltaFreq} onChange={handleInputChange} className={inputClass('deltaFreq', 'border-blue-300 bg-white shadow-sm')} />
+                                                {isFieldWarning('deltaFreq') && <p className="text-red-600 text-xs mt-1 font-bold">⚠️ {getWarningText('deltaFreq')}</p>}
+                                            </div>
+                                            
                                             <div>
                                                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                    Center Frequency (Hz)
-                                                    <span className="text-xs text-slate-400 ml-2 font-normal">
-                                                        Range: {currentProfile.cfMin} - {currentProfile.cfMax} Hz
-                                                    </span>
+                                                    Absolute CF (Hz) <span className="text-xs text-slate-400 font-normal">(Optional)</span>
+                                                    <span className="text-xs text-slate-400 block font-normal">Ref: {currentProfile.baseFreq}</span>
                                                 </label>
-                                                <input
-                                                    type="number"
-                                                    name="cf"
-                                                    required
-                                                    step="1"
-                                                    placeholder={currentProfile.baseFreq}
-                                                    value={formData.cf}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('cf')}
-                                                />
-                                                {isFieldWarning('cf') && (
-                                                    <p className="text-red-600 text-xs mt-1">⚠️ {getWarningText('cf')}</p>
-                                                )}
+                                                <input type="number" name="cf" step="1" placeholder="e.g. 127768770" value={formData.cf} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
                                             </div>
 
                                             <div>
                                                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                    Transmitter Gain (dB)
+                                                    Transmitter Gain (dB) <span className="text-red-500">*</span>
+                                                    <span className="text-xs text-slate-400 block font-normal">Required</span>
                                                 </label>
-                                                <input
-                                                    type="number"
-                                                    name="tg"
-                                                    required
-                                                    step="0.1"
-                                                    value={formData.tg}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                                                />
+                                                <input type="number" name="tg" required step="0.1" value={formData.tg} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
                                             </div>
                                         </div>
                                     </Card>
@@ -884,269 +631,43 @@
                                     {/* Section 4 */}
                                     <Card title="Primary Cooling & Room Environment" className="mb-6">
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                    Chiller Temp (°C)
-                                                    {currentProfile.chillerTempMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Range: {currentProfile.chillerTempMin}-{currentProfile.chillerTempMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="chillerTemp"
-                                                    step="0.1"
-                                                    value={formData.chillerTemp}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('chillerTemp', 'mt-1')}
-                                                />
-                                                {isFieldWarning('chillerTemp') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('chillerTemp')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                    Pri. Water Temp (°C)
-                                                    {currentProfile.waterTempMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Max: {currentProfile.waterTempMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="waterTemp"
-                                                    step="0.1"
-                                                    value={formData.waterTemp}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('waterTemp', currentProfile.waterTempMax ? 'mt-1' : 'mt-5')}
-                                                />
-                                                {isFieldWarning('waterTemp') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('waterTemp')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                    Pri. Water Flow (L/H)
-                                                    {currentProfile.waterFlowMin ? (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            &gt; {currentProfile.waterFlowMin}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="block text-[10px] text-transparent normal-case font-normal mt-0.5">.</span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="waterFlow"
-                                                    step="0.1"
-                                                    value={formData.waterFlow}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('waterFlow', currentProfile.waterFlowMin ? 'mt-1' : 'mt-5')}
-                                                />
-                                                {isFieldWarning('waterFlow') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('waterFlow')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                    Room Temp (°C)
-                                                    {currentProfile.roomTempMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Max: {currentProfile.roomTempMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="roomTemp"
-                                                    step="0.1"
-                                                    value={formData.roomTemp}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('roomTemp', currentProfile.roomTempMax ? 'mt-1' : 'mt-5')}
-                                                />
-                                                {isFieldWarning('roomTemp') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('roomTemp')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                    Room Humidity (%)
-                                                    {currentProfile.roomHumidMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Max: {currentProfile.roomHumidMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="roomHumidity"
-                                                    step="0.1"
-                                                    value={formData.roomHumidity}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('roomHumidity', currentProfile.roomHumidMax ? 'mt-1' : 'mt-5')}
-                                                />
-                                                {isFieldWarning('roomHumidity') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('roomHumidity')}</p>
-                                                )}
-                                            </div>
+                                            {['chillerTemp', 'waterTemp', 'waterFlow', 'roomTemp', 'roomHumidity'].map(field => (
+                                                <div key={field}>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                                        {currentRules[field]?.label || field}
+                                                        {currentRules[field] && (
+                                                            <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
+                                                                {currentRules[field].min !== undefined ? `Min: ${currentRules[field].min} ` : ''}
+                                                                {currentRules[field].max !== undefined ? `Max: ${currentRules[field].max}` : ''}
+                                                            </span>
+                                                        )}
+                                                    </label>
+                                                    <input type="number" name={field} step="0.1" value={formData[field]} onChange={handleInputChange} className={inputClass(field, 'mt-1')} />
+                                                    {isFieldWarning(field) && <p className="text-red-600 text-[10px] mt-1">{getWarningText(field)}</p>}
+                                                </div>
+                                            ))}
                                         </div>
                                     </Card>
 
                                     {/* Section 5 */}
                                     <Card title="Gradient & Heat Exchanger System" className="mb-6 border-l-4 border-l-blue-500">
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Coil Outlet Temperature">
-                                                    GC Out T (°C)
-                                                    {currentProfile.gcOutTMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Max: {currentProfile.gcOutTMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="gcOutT"
-                                                    step="0.1"
-                                                    value={formData.gcOutT}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('gcOutT', 'mt-1')}
-                                                />
-                                                {isFieldWarning('gcOutT') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('gcOutT')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Amplifier Outlet Temperature">
-                                                    GA Out T (°C)
-                                                    {currentProfile.gaOutTMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Max: {currentProfile.gaOutTMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="gaOutT"
-                                                    step="0.1"
-                                                    value={formData.gaOutT}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('gaOutT', 'mt-1')}
-                                                />
-                                                {isFieldWarning('gaOutT') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('gaOutT')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Coil Inlet Pressure">
-                                                    GC In P (bar)
-                                                    {(currentProfile.gcInPMin || currentProfile.gcInPMax) && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Range: {currentProfile.gcInPMin}-{currentProfile.gcInPMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="gcInP"
-                                                    step="0.01"
-                                                    value={formData.gcInP}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('gcInP', 'mt-1')}
-                                                />
-                                                {isFieldWarning('gcInP') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('gcInP')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Amplifier Inlet Pressure">
-                                                    GA In P (bar)
-                                                    {(currentProfile.gaInPMin || currentProfile.gaInPMax) && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Range: {currentProfile.gaInPMin}-{currentProfile.gaInPMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="gaInP"
-                                                    step="0.01"
-                                                    value={formData.gaInP}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('gaInP', 'mt-1')}
-                                                />
-                                                {isFieldWarning('gaInP') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('gaInP')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Heat Exchanger Return Temperature">
-                                                    HE. RE. T. (°C)
-                                                    <span className="block text-[10px] text-transparent normal-case font-normal mt-0.5">.</span>
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="heReT"
-                                                    step="0.1"
-                                                    value={formData.heReT}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none rounded-md mt-1"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Coil Three Way Volume">
-                                                    GC 3-Way V. (v.)
-                                                    {currentProfile.gc3WayVMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Range: {currentProfile.gc3WayVMin}-{currentProfile.gc3WayVMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="gc3WayV"
-                                                    step="0.1"
-                                                    value={formData.gc3WayV}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('gc3WayV', 'mt-1')}
-                                                />
-                                                {isFieldWarning('gc3WayV') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('gc3WayV')}</p>
-                                                )}
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1" title="Gradient Amplifier Three Way Volume">
-                                                    GA 3-Way V. (v.)
-                                                    {currentProfile.ga3WayVMax && (
-                                                        <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
-                                                            Range: {currentProfile.ga3WayVMin}-{currentProfile.ga3WayVMax}
-                                                        </span>
-                                                    )}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    name="ga3WayV"
-                                                    step="0.1"
-                                                    value={formData.ga3WayV}
-                                                    onChange={handleInputChange}
-                                                    className={inputClass('ga3WayV', 'mt-1')}
-                                                />
-                                                {isFieldWarning('ga3WayV') && (
-                                                    <p className="text-red-600 text-[10px] mt-1">{getWarningText('ga3WayV')}</p>
-                                                )}
-                                            </div>
+                                            {['gcOutT', 'gaOutT', 'gcInP', 'gaInP', 'heReT', 'gc3WayV', 'ga3WayV'].map(field => (
+                                                <div key={field}>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                                        {currentRules[field]?.label || field.replace(/([A-Z])/g, ' $1').trim().toUpperCase()}
+                                                        {currentRules[field] && (
+                                                            <span className="block text-[10px] text-slate-400 normal-case font-normal mt-0.5">
+                                                                {currentRules[field].min !== undefined ? `Min: ${currentRules[field].min} ` : ''}
+                                                                {currentRules[field].max !== undefined ? `Max: ${currentRules[field].max}` : ''}
+                                                            </span>
+                                                        )}
+                                                        {!currentRules[field] && <span className="block text-[10px] text-transparent normal-case font-normal mt-0.5">.</span>}
+                                                    </label>
+                                                    <input type="number" name={field} step="0.01" value={formData[field]} onChange={handleInputChange} className={inputClass(field, 'mt-1')} />
+                                                    {isFieldWarning(field) && <p className="text-red-600 text-[10px] mt-1">{getWarningText(field)}</p>}
+                                                </div>
+                                            ))}
                                         </div>
                                     </Card>
 
@@ -1155,34 +676,19 @@
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-slate-700 mb-1">Analysis Result (ผลการวิเคราะห์)</label>
-                                                <textarea
-                                                    name="analysisComment"
-                                                    rows="3"
-                                                    value={formData.analysisComment}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                                ></textarea>
+                                                <textarea name="analysisComment" rows="3" value={formData.analysisComment} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none resize-none"></textarea>
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-slate-700 mb-1">Test Conclusion (สรุปผลการทดสอบ)</label>
-                                                <textarea
-                                                    name="testConclusion"
-                                                    rows="2"
-                                                    value={formData.testConclusion}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                                ></textarea>
+                                                <textarea name="testConclusion" rows="2" value={formData.testConclusion} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none resize-none"></textarea>
                                             </div>
                                         </div>
                                     </Card>
 
                                     <div className="flex justify-end gap-3">
-                                        <button type="button" onClick={resetForm} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">
-                                            Reset Form
-                                        </button>
+                                        <button type="button" onClick={resetForm} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Reset Form</button>
                                         <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shadow-sm flex items-center gap-2">
-                                            <i data-lucide={editingId ? "save" : "cloud-upload"} className="w-4 h-4"></i>
-                                            {editingId ? 'Update Record' : 'Save to Cloud'}
+                                            <i data-lucide={editingId ? "save" : "cloud-upload"} className="w-4 h-4"></i> {editingId ? 'Update Record' : 'Save to Cloud'}
                                         </button>
                                     </div>
                                 </form>
@@ -1199,73 +705,53 @@
                                     </div>
                                 ) : (
                                     <>
+                                        {/* Top KPIs */}
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                             <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100">
-                                                <h3 className="text-slate-500 text-sm font-medium">Last CF Measurement</h3>
-                                                <p className="text-2xl font-bold text-slate-800 mt-1">
-                                                    {latestRecord?.cf || '-'} <span className="text-sm font-normal text-slate-500">Hz</span>
-                                                </p>
+                                                <h3 className="text-slate-500 text-sm font-medium">Latest Delta Freq</h3>
+                                                <p className="text-2xl font-bold text-slate-800 mt-1">{latestRecord?.deltaFreq || '-'} <span className="text-sm font-normal text-slate-500">Hz</span></p>
                                             </Card>
-
                                             <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
-                                                <h3 className="text-slate-500 text-sm font-medium">Avg Room Temp (Last 7 Days)</h3>
+                                                <h3 className="text-slate-500 text-sm font-medium">Avg Room Temp (7 Days)</h3>
                                                 <p className="text-2xl font-bold text-slate-800 mt-1">
-                                                    {recent7Records.length > 0
-                                                        ? (recent7Records.reduce((acc, curr) => acc + parseFloat(curr.roomTemp || 0), 0) / recent7Records.length).toFixed(1)
-                                                        : '-'} <span className="text-sm font-normal text-slate-500">°C</span>
+                                                    {recent7Records.length > 0 ? (recent7Records.reduce((acc, curr) => acc + parseFloat(curr.roomTemp || 0), 0) / recent7Records.length).toFixed(1) : '-'} <span className="text-sm font-normal text-slate-500">°C</span>
                                                 </p>
                                             </Card>
-
                                             <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
                                                 <h3 className="text-slate-500 text-sm font-medium">Compliance Rate</h3>
-                                                <p className="text-2xl font-bold text-slate-800 mt-1">
-                                                    {Math.round((statusCounts.pass / filteredRecords.length) * 100)}%
-                                                </p>
+                                                <p className="text-2xl font-bold text-slate-800 mt-1">{Math.round((statusCounts.pass / filteredRecords.length) * 100)}%</p>
                                             </Card>
-
                                             <Card className={`border ${latestRecord?.status === 'PASS' ? 'bg-gradient-to-br from-green-50 to-white border-green-100' : 'bg-gradient-to-br from-red-50 to-white border-red-100'}`}>
                                                 <h3 className="text-slate-500 text-sm font-medium">Latest Status</h3>
-                                                <p className={`text-2xl font-bold mt-1 ${latestRecord?.status === 'PASS' ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {latestRecord?.status}
-                                                </p>
+                                                <p className={`text-2xl font-bold mt-1 ${latestRecord?.status === 'PASS' ? 'text-green-700' : 'text-red-700'}`}>{latestRecord?.status}</p>
                                             </Card>
                                         </div>
 
                                         {latestRecord?.violations?.length > 0 && (
                                             <Card title="Latest Out-of-Tolerance Parameters" className="border-red-200 ring-1 ring-red-100">
                                                 <div className="flex flex-wrap gap-2">
-                                                    {latestRecord.violations.map((v, idx) => (
-                                                        <span key={idx} className="px-3 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
-                                                            {v.label}: {v.message}
-                                                        </span>
-                                                    ))}
+                                                    {latestRecord.violations.map((v, idx) => <span key={idx} className="px-3 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">{v.label}: {v.message}</span>)}
                                                 </div>
                                             </Card>
                                         )}
 
+                                        {/* Primary System Graphs */}
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <Card title="Center Frequency Drift (Hz)">
-                                                <div className="h-64">
-                                                    <TrendChart data={cfData} label="Center Frequency" color="#2563eb" upperLimit={currentProfile.cfMax} lowerLimit={currentProfile.cfMin} showLimits={true} />
-                                                </div>
+                                            <Card title="Delta Frequency Drift (Hz)">
+                                                <div className="h-64"><TrendChart data={deltaFreqData} label="Delta Freq" color="#2563eb" upperLimit={currentProfile.deltaFreqMax} lowerLimit={currentProfile.deltaFreqMin} showLimits={true} /></div>
                                             </Card>
                                             <Card title="Transmitter Gain Stability (dB)">
-                                                <div className="h-64">
-                                                    <TrendChart data={tgData} label="Transmitter Gain" color="#0891b2" showLimits={false} />
-                                                </div>
+                                                <div className="h-64"><TrendChart data={tgData} label="Transmitter Gain" color="#0891b2" showLimits={false} /></div>
                                             </Card>
                                         </div>
 
                                         {!currentProfile.isZeroBoilOff && (
                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                <Card title="Helium Level (%)">
-                                                    <div className="h-64">
-                                                        <TrendChart data={heliumData} label="Helium Level" color="#16a34a" lowerLimit={currentProfile.heMin} showLimits={true} />
-                                                    </div>
-                                                </Card>
+                                                <Card title="Helium Level (%)"><div className="h-64"><TrendChart data={heliumData} label="Helium Level" color="#16a34a" lowerLimit={currentProfile.heMin} showLimits={true} /></div></Card>
                                             </div>
                                         )}
 
+                                        {/* Cooling & Environment Trend (All other parameters) */}
                                         <h3 className="text-lg font-bold text-slate-800 mt-8 mb-2 border-l-4 border-blue-600 pl-3">Cooling & Environment Trend</h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                             <Card title="Room Temp (°C)"><div className="h-64"><TrendChart data={roomTempData} label="Room Temp" color="#f43f5e" upperLimit={currentProfile.roomTempMax} showLimits={!!currentProfile.roomTempMax} /></div></Card>
@@ -1292,14 +778,14 @@
                                 <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-100 flex flex-wrap gap-4 items-end">
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 mb-1">Year</label>
-                                        <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-2 w-32 outline-none">
+                                        <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-md focus:ring-blue-500 p-2 w-32 outline-none">
                                             <option value="all">All Years</option>
                                             {availableYears.map(year => (<option key={year} value={year}>{year}</option>))}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 mb-1">Month</label>
-                                        <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-2 w-40 outline-none">
+                                        <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-md focus:ring-blue-500 p-2 w-40 outline-none">
                                             <option value="all">All Months</option>
                                             <option value="0">Jan</option><option value="1">Feb</option><option value="2">Mar</option><option value="3">Apr</option><option value="4">May</option><option value="5">Jun</option>
                                             <option value="6">Jul</option><option value="7">Aug</option><option value="8">Sep</option><option value="9">Oct</option><option value="10">Nov</option><option value="11">Dec</option>
@@ -1310,12 +796,8 @@
                                 <div className="flex justify-between items-center mb-4">
                                     <div className="text-sm text-slate-500">Showing {filteredRecords.length} records</div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => setActiveTab('report')} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors">
-                                            <i data-lucide="file-text" className="w-4 h-4"></i> View Full Report
-                                        </button>
-                                        <button onClick={handleExportCSV} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-slate-300 text-slate-700 rounded hover:bg-slate-50 transition-colors">
-                                            <i data-lucide="download" className="w-4 h-4"></i> Export CSV
-                                        </button>
+                                        <button onClick={() => setActiveTab('report')} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100"><i data-lucide="file-text" className="w-4 h-4"></i> View Full Report</button>
+                                        <button onClick={handleExportCSV} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-slate-300 text-slate-700 rounded hover:bg-slate-50"><i data-lucide="download" className="w-4 h-4"></i> Export CSV</button>
                                     </div>
                                 </div>
 
@@ -1325,8 +807,8 @@
                                             <tr>
                                                 <th className="px-3 py-3 border-r border-slate-200">Date</th>
                                                 <th className="px-3 py-3 border-r border-slate-200">Status</th>
-                                                <th className="px-3 py-3 border-r border-slate-200">Violation</th>
-                                                <th className="px-3 py-3 text-right border-r border-slate-200">CF(Hz)</th>
+                                                <th className="px-3 py-3 text-right border-r border-slate-200 bg-blue-50" title="Delta Frequency">ΔF(Hz)</th>
+                                                <th className="px-3 py-3 text-right border-r border-slate-200" title="Absolute Center Frequency">CF(Hz)</th>
                                                 <th className="px-3 py-3 text-right border-r border-slate-200">TG(dB)</th>
                                                 <th className="px-3 py-3 text-right border-r border-slate-200" title="Chiller Temp">Chil(°C)</th>
                                                 <th className="px-3 py-3 text-right border-r border-slate-200" title="GC Out T">GCO(°C)</th>
@@ -1342,25 +824,10 @@
                                                 <tr key={record.id} className="border-b border-slate-100 hover:bg-blue-50 transition-colors">
                                                     <td className="px-3 py-2 border-r border-slate-100">{formatDate(record.date)}</td>
                                                     <td className="px-3 py-2 border-r border-slate-100">
-                                                        <span
-                                                            title={record.violations?.length
-                                                                ? record.violations.map(v => `${v.label}: ${v.message}`).join(' | ')
-                                                                : 'Within tolerance'}
-                                                            className={`px-2 py-1 rounded text-[10px] font-bold ${
-                                                                record.status === 'PASS'
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : 'bg-red-100 text-red-700'
-                                                            }`}
-                                                        >
-                                                            {record.status}
-                                                        </span>
+                                                        <span title={record.violations?.length ? record.violations.map(v => `${v.label}: ${v.message}`).join(' | ') : 'Within tolerance'} className={`px-2 py-1 rounded text-[10px] font-bold ${record.status === 'PASS' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{record.status}</span>
                                                     </td>
-                                                    <td className="px-3 py-2 border-r border-slate-100 text-[10px] text-red-600">
-                                                        {record.violations?.length
-                                                            ? record.violations.map(v => `${v.label}: ${v.message}`).join(' | ')
-                                                            : '-'}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-mono border-r border-slate-100">{record.cf}</td>
+                                                    <td className="px-3 py-2 text-right font-mono border-r border-slate-100 bg-blue-50/50 font-bold">{record.deltaFreq}</td>
+                                                    <td className="px-3 py-2 text-right font-mono border-r border-slate-100 text-slate-400">{record.cf || '-'}</td>
                                                     <td className="px-3 py-2 text-right font-mono border-r border-slate-100">{record.tg}</td>
                                                     <td className="px-3 py-2 text-right font-mono border-r border-slate-100 text-slate-500">{record.chillerTemp || '-'}</td>
                                                     <td className="px-3 py-2 text-right font-mono border-r border-slate-100 text-slate-500">{record.gcOutT || '-'}</td>
@@ -1370,19 +837,13 @@
                                                     <td className="px-3 py-2 text-right font-mono border-r border-slate-100 text-slate-500">{record.heReT || '-'}</td>
                                                     <td className="px-3 py-2 text-center">
                                                         <div className="flex items-center justify-center gap-2">
-                                                            <button onClick={() => handleEdit(record)} className="text-blue-500 hover:text-blue-700 hover:bg-blue-100 p-1 rounded transition-colors" title="Edit">
-                                                                <i data-lucide="edit-2" className="w-4 h-4"></i>
-                                                            </button>
-                                                            <button onClick={() => handleDelete(record.id)} className="text-red-500 hover:text-red-700 hover:bg-red-100 p-1 rounded transition-colors" title="Delete from Cloud">
-                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                            </button>
+                                                            <button onClick={() => handleEdit(record)} className="text-blue-500 hover:text-blue-700 hover:bg-blue-100 p-1 rounded" title="Edit"><i data-lucide="edit-2" className="w-4 h-4"></i></button>
+                                                            <button onClick={() => handleDelete(record.id)} className="text-red-500 hover:text-red-700 hover:bg-red-100 p-1 rounded" title="Delete"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
                                                         </div>
                                                     </td>
                                                 </tr>
                                             ))}
-                                            {filteredRecords.length === 0 && (
-                                                <tr><td colSpan="12" className="px-4 py-8 text-center text-slate-400">No records found.</td></tr>
-                                            )}
+                                            {filteredRecords.length === 0 && <tr><td colSpan="12" className="px-4 py-8 text-center text-slate-400">No records found.</td></tr>}
                                         </tbody>
                                     </table>
                                 </div>
@@ -1393,19 +854,14 @@
                         {activeTab === 'report' && (
                             <div className="bg-white rounded-xl shadow-lg p-8 min-h-screen">
                                 <div className="no-print flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
-                                    <button onClick={() => setActiveTab('history')} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors">
-                                        <i data-lucide="arrow-left" className="w-5 h-5"></i> Back to History
-                                    </button>
+                                    <button onClick={() => setActiveTab('history')} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100"><i data-lucide="arrow-left" className="w-5 h-5"></i> Back to History</button>
                                     <div className="flex items-center gap-4">
                                         <p className="text-sm text-slate-500">Ready to print. Layout optimized for Portrait A4.</p>
-                                        <button onClick={() => window.print()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 hover:bg-blue-700 font-medium transition-colors shadow-sm">
-                                            <i data-lucide="printer" className="w-5 h-5"></i> Print / Save PDF
-                                        </button>
+                                        <button onClick={() => window.print()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 hover:bg-blue-700 font-medium"><i data-lucide="printer" className="w-5 h-5"></i> Print / Save PDF</button>
                                     </div>
                                 </div>
 
                                 <div id="report-content">
-                                    {/* Header */}
                                     <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
                                         <h1 className="text-2xl font-extrabold text-slate-900 uppercase tracking-wide mb-2">MRI Quality Control Report</h1>
                                         <h2 className="text-lg font-semibold text-slate-700">{MACHINE_PROFILES[selectedMachine].name}</h2>
@@ -1416,123 +872,45 @@
                                         </div>
                                     </div>
 
+                                    {/* Simplified Chart Generation for Print Report */}
                                     {filteredRecords.length > 0 && (
                                         <div className="mb-8">
                                             <h3 className="text-base font-bold text-slate-800 mb-4 border-l-4 border-blue-600 pl-2">Trend Analysis Graphs</h3>
                                             <div className="grid grid-cols-1 gap-4">
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Center Frequency (Hz)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={cfData} label="CF (Hz)" color="#2563eb" upperLimit={currentProfile.cfMax} lowerLimit={currentProfile.cfMin} showLimits={true} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Transmitter Gain (dB)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={tgData} label="TG (dB)" color="#0891b2" showLimits={false} />
-                                                    </div>
-                                                </div>
-
-                                                {!currentProfile.isZeroBoilOff && (
-                                                    <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                        <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Helium Level (%)</h4>
+                                                
+                                                {/* ALL 15 GRAPHS IN PRINT REPORT */}
+                                                {[
+                                                    { data: deltaFreqData, label: 'Delta Freq (Hz)', color: '#2563eb', max: currentProfile.deltaFreqMax, min: currentProfile.deltaFreqMin, showLimits: true },
+                                                    { data: tgData, label: 'TG (dB)', color: '#0891b2', showLimits: false },
+                                                    ...(currentProfile.isZeroBoilOff ? [] : [{ data: heliumData, label: 'Helium Level (%)', color: '#16a34a', min: currentProfile.heMin, showLimits: true }]),
+                                                    { data: roomTempData, label: 'Room Temp (°C)', color: '#f43f5e', max: currentProfile.roomTempMax, showLimits: !!currentProfile.roomTempMax },
+                                                    { data: roomHumidityData, label: 'Room Humidity (%)', color: '#a855f7', max: currentProfile.roomHumidMax, showLimits: !!currentProfile.roomHumidMax },
+                                                    { data: chillerTempData, label: 'Chiller Temp (°C)', color: '#7c3aed', max: currentProfile.chillerTempMax, min: currentProfile.chillerTempMin, showLimits: true },
+                                                    { data: waterTempData, label: 'Pri. Water Temp (°C)', color: '#0284c7', max: currentProfile.waterTempMax, showLimits: !!currentProfile.waterTempMax },
+                                                    { data: waterFlowData, label: 'Pri. Water Flow (L/H)', color: '#0ea5e9', min: currentProfile.waterFlowMin, showLimits: !!currentProfile.waterFlowMin },
+                                                    { data: heReTData, label: 'HE. RE. T. (°C)', color: '#d97706', showLimits: false },
+                                                    { data: gcOutTData, label: 'GC Out T (°C)', color: '#e11d48', max: currentProfile.gcOutTMax, showLimits: !!currentProfile.gcOutTMax },
+                                                    { data: gaOutTData, label: 'GA Out T (°C)', color: '#ea580c', max: currentProfile.gaOutTMax, showLimits: !!currentProfile.gaOutTMax },
+                                                    { data: gcInPData, label: 'GC In P (bar)', color: '#059669', max: currentProfile.gcInPMax, min: currentProfile.gcInPMin, showLimits: true },
+                                                    { data: gaInPData, label: 'GA In P (bar)', color: '#10b981', max: currentProfile.gaInPMax, min: currentProfile.gaInPMin, showLimits: true },
+                                                    { data: gc3WayVData, label: 'GC 3-Way V. (v.)', color: '#8b5cf6', max: currentProfile.gc3WayVMax, min: currentProfile.gc3WayVMin, showLimits: !!currentProfile.gc3WayVMax },
+                                                    { data: ga3WayVData, label: 'GA 3-Way V. (v.)', color: '#a855f7', max: currentProfile.ga3WayVMax, min: currentProfile.ga3WayVMin, showLimits: !!currentProfile.ga3WayVMax }
+                                                ].map((graph, idx) => (
+                                                    <div key={idx} className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
+                                                        <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">{graph.label}</h4>
                                                         <div className="h-48 w-full relative">
-                                                            <TrendChart data={heliumData} label="Helium Level (%)" color="#16a34a" lowerLimit={currentProfile.heMin} showLimits={true} />
+                                                            <TrendChart data={graph.data} label={graph.label} color={graph.color} upperLimit={graph.max} lowerLimit={graph.min} showLimits={graph.showLimits} />
                                                         </div>
                                                     </div>
-                                                )}
+                                                ))}
 
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Room Temp (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={roomTempData} label="Room Temp (°C)" color="#f43f5e" upperLimit={currentProfile.roomTempMax} showLimits={!!currentProfile.roomTempMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Room Humidity (%)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={roomHumidityData} label="Room Humidity (%)" color="#a855f7" upperLimit={currentProfile.roomHumidMax} showLimits={!!currentProfile.roomHumidMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Chiller Temp (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={chillerTempData} label="Chiller Temp (°C)" color="#7c3aed" upperLimit={currentProfile.chillerTempMax} lowerLimit={currentProfile.chillerTempMin} showLimits={true} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Pri. Water Temp (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={waterTempData} label="Water Temp (°C)" color="#0284c7" upperLimit={currentProfile.waterTempMax} showLimits={!!currentProfile.waterTempMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">Pri. Water Flow (L/H)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={waterFlowData} label="Water Flow (L/H)" color="#0ea5e9" lowerLimit={currentProfile.waterFlowMin} showLimits={!!currentProfile.waterFlowMin} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">HE. RE. T. (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={heReTData} label="HE. RE. T. (°C)" color="#d97706" showLimits={false} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GC Out T (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={gcOutTData} label="GC Out T (°C)" color="#e11d48" upperLimit={currentProfile.gcOutTMax} showLimits={!!currentProfile.gcOutTMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GA Out T (°C)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={gaOutTData} label="GA Out T (°C)" color="#ea580c" upperLimit={currentProfile.gaOutTMax} showLimits={!!currentProfile.gaOutTMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GC In P (bar)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={gcInPData} label="GC In P (bar)" color="#059669" upperLimit={currentProfile.gcInPMax} lowerLimit={currentProfile.gcInPMin} showLimits={true} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GA In P (bar)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={gaInPData} label="GA In P (bar)" color="#10b981" upperLimit={currentProfile.gaInPMax} lowerLimit={currentProfile.gaInPMin} showLimits={true} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GC 3-Way V. (v.)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={gc3WayVData} label="GC 3-Way V. (v.)" color="#8b5cf6" upperLimit={currentProfile.gc3WayVMax} lowerLimit={currentProfile.gc3WayVMin} showLimits={!!currentProfile.gc3WayVMax} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="border border-slate-200 rounded-lg p-3 break-inside-avoid shadow-sm bg-white">
-                                                    <h4 className="text-center font-bold text-slate-700 mb-1 text-xs">GA 3-Way V. (v.)</h4>
-                                                    <div className="h-48 w-full relative">
-                                                        <TrendChart data={ga3WayVData} label="GA 3-Way V. (v.)" color="#a855f7" upperLimit={currentProfile.ga3WayVMax} lowerLimit={currentProfile.ga3WayVMin} showLimits={!!currentProfile.ga3WayVMax} />
-                                                    </div>
-                                                </div>
                                             </div>
                                         </div>
                                     )}
 
                                     <div className="page-break"></div>
 
-                                    {/* Data Table */}
+                                    {/* Data Table Print */}
                                     <div className="mt-4 mb-8">
                                         <h3 className="text-base font-bold text-slate-800 mb-3 border-l-4 border-blue-600 pl-2">Detailed Data Log</h3>
                                         <div className="overflow-hidden border border-slate-300">
@@ -1541,10 +919,11 @@
                                                     <tr>
                                                         <th className="p-1 border border-slate-200 text-slate-600">Date</th>
                                                         <th className="p-1 border border-slate-200 text-slate-600">Stat</th>
-                                                        <th className="p-1 border border-slate-200 text-slate-600">CF</th>
+                                                        <th className="p-1 border border-slate-200 text-blue-700">ΔF</th>
+                                                        <th className="p-1 border border-slate-200 text-slate-400">CF</th>
                                                         <th className="p-1 border border-slate-200 text-slate-600">TG</th>
-                                                        <th className="p-1 border border-slate-200 text-slate-600" title="Chiller Temp">Chil</th>
-                                                        <th className="p-1 border border-slate-200 text-slate-600" title="Pri Water Flow">Flow</th>
+                                                        <th className="p-1 border border-slate-200 text-slate-600">Chil</th>
+                                                        <th className="p-1 border border-slate-200 text-slate-600">Flow</th>
                                                         <th className="p-1 border border-slate-200 text-slate-600">GCO</th>
                                                         <th className="p-1 border border-slate-200 text-slate-600">GAO</th>
                                                         <th className="p-1 border border-slate-200 text-slate-600">GCi</th>
@@ -1555,13 +934,12 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {filteredRecords[0] ? filteredRecords.map((record, idx) => (
+                                                    {filteredRecords.map((record, idx) => (
                                                         <tr key={record.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                                                             <td className="p-1 border border-slate-200 whitespace-nowrap">{formatDate(record.date)}</td>
-                                                            <td className={`p-1 border border-slate-200 font-bold ${record.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                {record.status === 'PASS' ? 'P' : 'NP'}
-                                                            </td>
-                                                            <td className="p-1 border border-slate-200 font-mono">{record.cf}</td>
+                                                            <td className={`p-1 border border-slate-200 font-bold ${record.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>{record.status === 'PASS' ? 'P' : 'NP'}</td>
+                                                            <td className="p-1 border border-slate-200 font-mono font-bold">{record.deltaFreq}</td>
+                                                            <td className="p-1 border border-slate-200 font-mono text-slate-400">{record.cf || '-'}</td>
                                                             <td className="p-1 border border-slate-200 font-mono">{record.tg}</td>
                                                             <td className="p-1 border border-slate-200 font-mono">{record.chillerTemp}</td>
                                                             <td className="p-1 border border-slate-200 font-mono">{record.waterFlow}</td>
@@ -1573,74 +951,21 @@
                                                             <td className="p-1 border border-slate-200 font-mono">{record.gc3WayV}</td>
                                                             <td className="p-1 border border-slate-200 font-mono">{record.ga3WayV}</td>
                                                         </tr>
-                                                    )) : <tr><td colSpan="13" className="p-4 text-slate-400">No data</td></tr>}
+                                                    ))}
                                                 </tbody>
                                             </table>
                                         </div>
                                     </div>
 
-                                    <div className="break-inside-avoid">
-                                        <div className="pt-4 border-t-2 border-slate-300">
-                                            <h3 className="text-base font-bold text-slate-800 mb-3 border-l-4 border-blue-600 pl-2">Visual Checklist & Environment (Latest Entry)</h3>
-                                            <div className="bg-slate-50 p-3 rounded border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                {CHECKLIST_ITEMS.map(item => {
-                                                    const isChecked = latestRecord?.checklist?.[item.id];
-                                                    return (
-                                                        <div key={item.id} className="flex items-start gap-1.5">
-                                                            <span className={`text-[10px] ${isChecked ? 'text-green-600' : 'text-slate-400'}`}>
-                                                                {isChecked ? '☑' : '☐'}
-                                                            </span>
-                                                            <span className={`text-[9px] leading-tight ${isChecked ? 'text-slate-700' : 'text-slate-400'}`}>
-                                                                {item.label}
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-6 pt-4 border-t border-slate-200">
-                                            <h3 className="text-base font-bold text-slate-800 mb-3 border-l-4 border-blue-600 pl-2">Physicist's Analysis & Conclusion (Latest Entry)</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                                    <h4 className="font-semibold text-slate-700 mb-1 text-xs">Analysis Result</h4>
-                                                    <p className="text-[10px] text-slate-600 whitespace-pre-wrap min-h-[40px]">
-                                                        {latestRecord?.analysisComment || 'No analysis recorded.'}
-                                                    </p>
-                                                </div>
-                                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                                    <h4 className="font-semibold text-slate-700 mb-1 text-xs">Test Conclusion</h4>
-                                                    <p className="text-[10px] text-slate-600 whitespace-pre-wrap min-h-[40px]">
-                                                        {latestRecord?.testConclusion || 'No conclusion recorded.'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {latestRecord?.violations?.length > 0 && (
-                                            <div className="mt-6 pt-4 border-t border-slate-200">
-                                                <h3 className="text-base font-bold text-slate-800 mb-3 border-l-4 border-red-600 pl-2">Out-of-Tolerance Summary (Latest Entry)</h3>
-                                                <div className="bg-red-50 p-3 rounded border border-red-200">
-                                                    <ul className="text-[11px] text-red-700 space-y-1">
-                                                        {latestRecord.violations.map((v, idx) => (
-                                                            <li key={idx}>• {v.label}: {v.message}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="mt-12 grid grid-cols-2 gap-16 px-8">
-                                            <div><div className="border-b border-black h-6"></div><p className="mt-2 text-xs font-medium text-slate-800 text-center">Reviewing Medical Physicist</p></div>
-                                            <div><div className="border-b border-black h-6"></div><p className="mt-2 text-xs font-medium text-slate-800 text-center">Date</p></div>
-                                        </div>
-
-                                        <div className="mt-8 pt-4 border-t border-slate-200 text-center">
-                                            <p className="text-[10px] font-semibold text-slate-600">
-                                                จัดทำโดย ทีมฟิสิกส์การแพทย์ รังสีวินิจฉัย คณะแพทยศาสตร์ มหาวิทยาลัยสงขลานครินทร์
-                                            </p>
-                                        </div>
+                                    {/* Sign Off */}
+                                    <div className="mt-12 grid grid-cols-2 gap-16 px-8 break-inside-avoid">
+                                        <div><div className="border-b border-black h-6"></div><p className="mt-2 text-xs font-medium text-slate-800 text-center">Reviewing Medical Physicist</p></div>
+                                        <div><div className="border-b border-black h-6"></div><p className="mt-2 text-xs font-medium text-slate-800 text-center">Date</p></div>
                                     </div>
+                                    <div className="mt-8 pt-4 border-t border-slate-200 text-center break-inside-avoid">
+                                        <p className="text-[10px] font-semibold text-slate-600">จัดทำโดย ทีมฟิสิกส์การแพทย์ รังสีวินิจฉัย คณะแพทยศาสตร์ มหาวิทยาลัยสงขลานครินทร์</p>
+                                    </div>
+
                                 </div>
                             </div>
                         )}
