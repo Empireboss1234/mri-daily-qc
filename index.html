@@ -47,12 +47,15 @@
             '1.5T': {
                 name: 'Philips Ingenia Ambition S 1.5 T.',
                 baseFreq: 63860000,
-                deltaFreqMin: -100, // Tolerance for Delta Freq (Hz)
-                deltaFreqMax: 100,  // Tolerance for Delta Freq (Hz)
+                // --- แยก Limit 2 ตัวชัดเจน ---
+                cfMin: 63570000, 
+                cfMax: 64180000,
+                deltaFreqMin: -100, 
+                deltaFreqMax: 100,
+                // -------------------------
                 isZeroBoilOff: true,
                 roomTempMax: 24.0,
                 roomHumidMax: 70.0,
-
                 chillerTempMin: 8.0,
                 chillerTempMax: 13.0,
                 waterFlowMin: 3500.0,
@@ -70,13 +73,16 @@
             '3.0T': {
                 name: 'Philips Achieva dStream 3.0 T.',
                 baseFreq: 127720000,
-                deltaFreqMin: -100, // Tolerance for Delta Freq (Hz)
-                deltaFreqMax: 100,  // Tolerance for Delta Freq (Hz)
+                // --- แยก Limit 2 ตัวชัดเจน ---
+                cfMin: 127370000, 
+                cfMax: 128090000, 
+                deltaFreqMin: -100, 
+                deltaFreqMax: 100,  
+                // -------------------------
                 heMin: 50.0,
                 waterTempMax: 12.0,
                 roomTempMax: 24.0,
                 roomHumidMax: 70.0,
-
                 chillerTempMin: 8.0,
                 chillerTempMax: 13.0,
                 waterFlowMin: 3500.0,
@@ -141,11 +147,16 @@
         });
 
         const buildToleranceRules = (profile) => ({
+            // กฎของ Delta
             deltaFreq: (profile.deltaFreqMin !== undefined || profile.deltaFreqMax !== undefined) 
                 ? { label: 'Delta Frequency', min: profile.deltaFreqMin, max: profile.deltaFreqMax, unit: 'Hz' } 
                 : null,
-            // absolute CF removed from strict rules to prevent false warnings, rely on deltaFreq instead
-            
+                
+            // กฎของ Absolute CF
+            cf: (profile.cfMin !== undefined || profile.cfMax !== undefined)
+                ? { label: 'Center Frequency', min: profile.cfMin, max: profile.cfMax, unit: 'Hz' }
+                : null,
+                
             heliumLevel: (!profile.isZeroBoilOff && profile.heMin !== undefined)
                 ? { label: 'Helium Level', min: profile.heMin, unit: '%' } : null,
             chillerTemp: (profile.chillerTempMin !== undefined || profile.chillerTempMax !== undefined)
@@ -252,6 +263,8 @@
                 const values = validData.map(d => parseFloat(d.value));
 
                 const violationLabels = validData.map((d, index) => {
+                    // Only display text warning if showLimits is enabled
+                    if (!showLimits) return null;
                     const result = evaluateFieldAgainstRule(d.value, { min: lowerLimit, max: upperLimit });
                     return result.isOut ? { index, text: result.message, value: result.numericValue } : null;
                 }).filter(Boolean);
@@ -503,8 +516,25 @@
                     isFieldWarning(fieldName) ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-300 focus:ring-2 focus:ring-blue-500'
                 } ${extra}`;
 
-            // Chart Data Prep (All 15 Data points)
-            const deltaFreqData = filteredRecords.map(r => ({ date: r.date, value: r.deltaFreq }));
+            // Chart Data Prep (All 16 Data points)
+            const deltaFreqData = filteredRecords.map(r => {
+                let val = r.deltaFreq;
+                // ถ้าระบบหาค่า Delta ไม่เจอ แต่มีค่า CF เดิมอยู่ ให้คำนวณย้อนหลังอัตโนมัติ
+                if ((val === '' || val === undefined || val === null) && r.cf) {
+                    const profile = MACHINE_PROFILES[r.machine];
+                    val = parseFloat(r.cf) - profile.baseFreq;
+                }
+                return { date: r.date, value: val };
+            });
+            const cfData = filteredRecords.map(r => ({ date: r.date, value: r.cf }));
+
+            // อัปเดตตัวแปรสำหรับแสดง KPI ด้านบนด้วย
+            let displayLatestDelta = latestRecord?.deltaFreq;
+            if ((displayLatestDelta === undefined || displayLatestDelta === '' || displayLatestDelta === null) && latestRecord?.cf) {
+                const profile = MACHINE_PROFILES[latestRecord.machine];
+                displayLatestDelta = parseFloat(latestRecord?.cf) - profile.baseFreq;
+            }
+            
             const tgData = filteredRecords.map(r => ({ date: r.date, value: r.tg }));
             const heliumData = filteredRecords.map(r => ({ date: r.date, value: r.heliumLevel }));
             const chillerTempData = filteredRecords.map(r => ({ date: r.date, value: r.chillerTemp }));
@@ -709,7 +739,7 @@
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                             <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100">
                                                 <h3 className="text-slate-500 text-sm font-medium">Latest Delta Freq</h3>
-                                                <p className="text-2xl font-bold text-slate-800 mt-1">{latestRecord?.deltaFreq || '-'} <span className="text-sm font-normal text-slate-500">Hz</span></p>
+                                                <p className="text-2xl font-bold text-slate-800 mt-1">{displayLatestDelta !== undefined && displayLatestDelta !== '' ? displayLatestDelta : '-'} <span className="text-sm font-normal text-slate-500">Hz</span></p>
                                             </Card>
                                             <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
                                                 <h3 className="text-slate-500 text-sm font-medium">Avg Room Temp (7 Days)</h3>
@@ -737,11 +767,38 @@
 
                                         {/* Primary System Graphs */}
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <Card title="Delta Frequency Drift (Hz)">
-                                                <div className="h-64"><TrendChart data={deltaFreqData} label="Delta Freq" color="#2563eb" upperLimit={currentProfile.deltaFreqMax} lowerLimit={currentProfile.deltaFreqMin} showLimits={true} /></div>
+                                            
+                                            {/* กราฟ 1: CF Trend (ซูมดูการดริฟต์รายวัน โดยไม่ใส่เส้น Limit เพื่อให้กราฟ Auto-scale ตัวเอง) */}
+                                            <Card title="Center Frequency - Daily Trend (Zoomed)">
+                                                <div className="h-64">
+                                                    <TrendChart 
+                                                        data={cfData} 
+                                                        label="CF (Hz)" 
+                                                        color="#2563eb" 
+                                                        showLimits={false} 
+                                                    />
+                                                </div>
                                             </Card>
+
+                                            {/* กราฟ 2: Absolute CF (ดูภาพรวม Pass/Fail ตามสเปคบริษัทที่กว้างมาก) */}
+                                            <Card title="Absolute Center Frequency (Philips Spec)">
+                                                <div className="h-64">
+                                                    <TrendChart 
+                                                        data={cfData} 
+                                                        label="Absolute CF" 
+                                                        color="#4f46e5" 
+                                                        upperLimit={currentProfile.cfMax} 
+                                                        lowerLimit={currentProfile.cfMin} 
+                                                        showLimits={true} 
+                                                    />
+                                                </div>
+                                            </Card>
+
+                                            {/* 3. กราฟ Transmitter Gain */}
                                             <Card title="Transmitter Gain Stability (dB)">
-                                                <div className="h-64"><TrendChart data={tgData} label="Transmitter Gain" color="#0891b2" showLimits={false} /></div>
+                                                <div className="h-64">
+                                                    <TrendChart data={tgData} label="Transmitter Gain" color="#0891b2" showLimits={false} />
+                                                </div>
                                             </Card>
                                         </div>
 
@@ -878,9 +935,22 @@
                                             <h3 className="text-base font-bold text-slate-800 mb-4 border-l-4 border-blue-600 pl-2">Trend Analysis Graphs</h3>
                                             <div className="grid grid-cols-1 gap-4">
                                                 
-                                                {/* ALL 15 GRAPHS IN PRINT REPORT */}
+                                                {/* ALL 16 GRAPHS IN PRINT REPORT */}
                                                 {[
-                                                    { data: deltaFreqData, label: 'Delta Freq (Hz)', color: '#2563eb', max: currentProfile.deltaFreqMax, min: currentProfile.deltaFreqMin, showLimits: true },
+                                                    { 
+                                                        data: cfData, 
+                                                        label: 'CF Daily Trend (Zoomed)', 
+                                                        color: '#2563eb', 
+                                                        showLimits: false 
+                                                    },
+                                                    { 
+                                                        data: cfData, 
+                                                        label: 'Absolute CF (Philips Spec)', 
+                                                        color: '#4f46e5', 
+                                                        max: currentProfile.cfMax, 
+                                                        min: currentProfile.cfMin, 
+                                                        showLimits: true 
+                                                    },
                                                     { data: tgData, label: 'TG (dB)', color: '#0891b2', showLimits: false },
                                                     ...(currentProfile.isZeroBoilOff ? [] : [{ data: heliumData, label: 'Helium Level (%)', color: '#16a34a', min: currentProfile.heMin, showLimits: true }]),
                                                     { data: roomTempData, label: 'Room Temp (°C)', color: '#f43f5e', max: currentProfile.roomTempMax, showLimits: !!currentProfile.roomTempMax },
